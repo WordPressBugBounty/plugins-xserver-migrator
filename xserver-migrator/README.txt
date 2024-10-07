@@ -1,11 +1,13 @@
-=== Xserver Migrator ===
+=== XServer Migrator ===
 Contributors: xserverjp
 Tags: xserver
 Requires at least: 4.2.29
-Tested up to: 6.6.1
-Stable tag: 1.6.4
+Tested up to: 6.6.2
+Stable tag: 1.6.5
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
+
+エックスサーバー株式会社が提供するレンタルサーバーサービスで「WordPress簡単移行機能」をご利用いただくためのプラグインです。
 
 == Description ==
 エックスサーバー株式会社が提供するレンタルサーバーサービスの「エックスサーバー」「wpX Speed」で「WordPress簡単移行機能」をご利用いただくためのプラグインです。
@@ -38,7 +40,7 @@ License URI: http://www.gnu.org/licenses/gpl-2.0.html
 == Frequently asked questions ==
 よくある質問については、以下の「よくある質問」をご確認ください。
 
-　▼Xserver よくある質問
+　▼XServer よくある質問
 　　https://www.xserver.ne.jp/support/faq/
 
 　▼wpX Speed よくある質問
@@ -46,6 +48,9 @@ License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
 
 == Changelog ==
+
+= 1.6.5 =
+* データベースのダンプに関しての機能改善
 
 = 1.6.4 =
 * 移行用データファイル作成に関しての改善

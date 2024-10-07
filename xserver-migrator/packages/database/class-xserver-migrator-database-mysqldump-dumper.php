@@ -113,9 +113,9 @@ class Xserver_Migrator_Database_Mysqldump_Dumper extends Xserver_Migrator_Databa
 
 		// MariaDB 10.5.25 以降で mysqldump が生成するコメントを削除
 		if ( $is_bsd ) {
-			exec( "sed -i '' -e '/^\/\*!999999\\\- enable the sandbox mode/d' " . $this->dump_file_path, $output, $status );
+			exec( "sed -i '' -e '/^\/\*.*\\\- enable the sandbox mode/d' " . $this->dump_file_path, $output, $status );
 		} else {
-			exec( "sed -i -e '/^\/\*!999999\\\- enable the sandbox mode/d' " . $this->dump_file_path, $output, $status );
+			exec( "sed -i -e '/^\/\*.*\\\- enable the sandbox mode/d' " . $this->dump_file_path, $output, $status );
 		}
 
 		if ( $status !== 0 ) {

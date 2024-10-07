@@ -12,11 +12,11 @@
  * @package           Xserver_Migrator
  *
  * @wordpress-plugin
- * Plugin Name:       Xserver Migrator
+ * Plugin Name:       XServer Migrator
  * Plugin URI:        https://ja.wordpress.org/plugins/xserver-migrator
  * Description:       エックスサーバー株式会社が提供するレンタルサーバーサービス「エックスサーバー」「wpX Speed」の「WordPress簡単移行機能」専用のプラグインです。
- * Version:           1.6.4
- * Author:            XSERVER Inc.
+ * Version:           1.6.5
+ * Author:            XServer Inc.
  * Author URI:        https://www.xserver.ne.jp
  * License:           GPL-2.0+
  * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
