@@ -2,8 +2,8 @@
 Contributors: xserverjp
 Tags: xserver
 Requires at least: 4.2.29
-Tested up to: 6.6.2
-Stable tag: 1.6.5
+Tested up to: 6.7.1
+Stable tag: 1.6.6
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,9 @@ License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
 
 == Changelog ==
+
+= 1.6.6 =
+* PHP8以上の場合にexec関数の利用可否を確認する処理を追加
 
 = 1.6.5 =
 * データベースのダンプに関しての機能改善

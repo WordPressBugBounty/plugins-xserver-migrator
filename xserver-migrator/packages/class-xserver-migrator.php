@@ -27,6 +27,13 @@ class Xserver_Migrator
 		// アクション追加
 		$this->bind_actions();
 
+		if ( ! function_exists( 'exec' ) && version_compare( PHP_VERSION, '8.0.0', '>=' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+			deactivate_plugins( XSERVER_MIGRATOR_PLUGIN_FILE_NAME );
+
+			return;
+		}
+
 		if ( ! file_exists( XSERVER_MIGRATOR_WORKSPACE_DIR ) ) {
 			@mkdir( XSERVER_MIGRATOR_WORKSPACE_DIR );
 		}
