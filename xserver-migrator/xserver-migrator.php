@@ -15,7 +15,7 @@
  * Plugin Name:       XServer Migrator
  * Plugin URI:        https://ja.wordpress.org/plugins/xserver-migrator
  * Description:       エックスサーバー株式会社が提供するレンタルサーバーサービス「エックスサーバー」「wpX Speed」の「WordPress簡単移行機能」専用のプラグインです。
- * Version:           1.6.6
+ * Version:           1.6.7
  * Author:            XServer Inc.
  * Author URI:        https://www.xserver.ne.jp
  * License:           GPL-2.0+
@@ -43,6 +43,11 @@ define( 'XSERVER_MIGRATOR_WORKSPACE_DIR', WP_CONTENT_DIR . DIRECTORY_SEPARATOR .
 // ログファイルパス
 define( 'XSERVER_MIGRATOR_LOG_FILE_PATH', XSERVER_MIGRATOR_WORKSPACE_DIR . 'migrator.log' );
 
+require_once XSERVER_MIGRATOR_PLUGIN_DIR . 'packages' . DIRECTORY_SEPARATOR . 'class-xserver-migrator-file.php';
+require_once XSERVER_MIGRATOR_PLUGIN_DIR . 'packages' . DIRECTORY_SEPARATOR . 'class-xserver-migrator-log.php';
+require_once XSERVER_MIGRATOR_PLUGIN_DIR . 'packages' . DIRECTORY_SEPARATOR . 'class-xserver-migrator-exceptions.php';
+require_once XSERVER_MIGRATOR_PLUGIN_DIR . 'packages' . DIRECTORY_SEPARATOR . 'class-xserver-migrator-download.php';
+
 // Xserver_Migrator
 require_once XSERVER_MIGRATOR_PLUGIN_DIR . 'packages' . DIRECTORY_SEPARATOR . 'class-xserver-migrator.php';
 
@@ -59,6 +64,10 @@ register_activation_hook( __FILE__, array( 'Xserver_Migrator_Activator', 'activa
 register_deactivation_hook( __FILE__, array( 'Xserver_Migrator_Deactivator', 'deactivate' ) );
 
 // アクション追加
+add_action( 'wp_ajax_xserver_migrator_download_archive', array( 'Xserver_Migrator_Download', 'download_archive' ) );
+add_action( 'wp_ajax_nopriv_xserver_migrator_download_archive', array( 'Xserver_Migrator_Download', 'download_archive' ) );
+add_action( 'xserver_migrator_cleanup_archive', array( 'Xserver_Migrator_Download', 'cleanup_archive' ) );
+add_action( 'admin_notices', array( 'Xserver_Migrator', 'protection_notice' ) );
 add_action( 'plugins_loaded', 'run_xserver_migrator' );
 
 /**
@@ -70,6 +79,8 @@ add_action( 'plugins_loaded', 'run_xserver_migrator' );
  */
 function run_xserver_migrator() {
 
+	Xserver_Migrator::prepare_workspace();
+	Xserver_Migrator_Download::cleanup_expired_archives();
 	Xserver_Migrator::get_instance();
 
 }

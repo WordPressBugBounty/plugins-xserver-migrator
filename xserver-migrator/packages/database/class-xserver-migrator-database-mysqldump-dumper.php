@@ -18,10 +18,19 @@ class Xserver_Migrator_Database_Mysqldump_Dumper extends Xserver_Migrator_Databa
 	{
 		$mysqldump = $this->get_mysqldump_path();
 
-		$defaults_extra_file = XSERVER_MIGRATOR_WORKSPACE_DIR . Xserver_Migrator_File::create_random_string() . '.txt';
-
-		if ( ! touch( $defaults_extra_file ) ) {
-			throw new Xserver_Migrator_Database_Dump_Exception( 'Can\'t create defaults extra file: ' . $defaults_extra_file );
+		$defaults_extra_handle = false;
+		for ( $attempt = 0; $attempt < 10; $attempt++ ) {
+			$defaults_extra_file = XSERVER_MIGRATOR_WORKSPACE_DIR . Xserver_Migrator_File::create_random_string() . '.txt';
+			$defaults_extra_handle = @fopen( $defaults_extra_file, 'xb' );
+			if ( $defaults_extra_handle ) {
+				break;
+			}
+			if ( ! file_exists( $defaults_extra_file ) && ! is_link( $defaults_extra_file ) ) {
+				throw new Xserver_Migrator_Database_Dump_Exception( 'Can\'t create defaults extra file' );
+			}
+		}
+		if ( ! $defaults_extra_handle ) {
+			throw new Xserver_Migrator_Database_Dump_Exception( 'Can\'t create defaults extra file after retries' );
 		}
 
 		$content  = '[client]' . PHP_EOL;
@@ -29,7 +38,21 @@ class Xserver_Migrator_Database_Mysqldump_Dumper extends Xserver_Migrator_Databa
 		$content .= 'password = \'' . DB_PASSWORD . '\'' . PHP_EOL;
 		$content .= 'host = \'' . DB_HOST . '\'' . PHP_EOL;
 
-		Xserver_Migrator_File::writeLine( $defaults_extra_file, $content );
+		$content .= PHP_EOL;
+		$written = 0;
+		$length = strlen( $content );
+		while ( $written < $length ) {
+			$count = @fwrite( $defaults_extra_handle, substr( $content, $written ) );
+			if ( false === $count || 0 === $count ) {
+				break;
+			}
+			$written += $count;
+		}
+		$closed = @fclose( $defaults_extra_handle );
+		if ( $written !== $length || ! $closed ) {
+			@unlink( $defaults_extra_file );
+			throw new Xserver_Migrator_Database_Dump_Exception( 'Can\'t write defaults extra file' );
+		}
 
 		$privileges = $this->get_privileges();
 		$event_option = $this->has_event_privilege( $privileges ) ? '-E' : '';
@@ -41,7 +64,7 @@ class Xserver_Migrator_Database_Mysqldump_Dumper extends Xserver_Migrator_Databa
 		exec( $command, $output, $return_var );
 
 		if ( ! Xserver_Migrator_File::remove( $defaults_extra_file ) ) {
-			Xserver_Migrator_Log::error( 'Can\'t remove file: ' . $defaults_extra_file );
+			Xserver_Migrator_Log::error( 'Can\'t remove defaults extra file' );
 		}
 
 		if ( $return_var !== 0 ) {

@@ -20,11 +20,6 @@ class Xserver_Migrator_Activator
 				)
 			);
 		}
-		if ( ! file_exists( XSERVER_MIGRATOR_WORKSPACE_DIR ) ) {
-			@mkdir( XSERVER_MIGRATOR_WORKSPACE_DIR );
-		}
-		if ( ! file_exists( XSERVER_MIGRATOR_WORKSPACE_DIR . 'migrator.log' ) ) {
-			@touch( XSERVER_MIGRATOR_WORKSPACE_DIR . 'migrator.log' );
-		}
+		Xserver_Migrator::prepare_workspace();
 	}
 }

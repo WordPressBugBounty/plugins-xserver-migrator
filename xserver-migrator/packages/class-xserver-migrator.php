@@ -12,6 +12,49 @@ class Xserver_Migrator
 
 	private $admin;
 
+	private $backup_lock;
+
+	private $backup_active = false;
+
+	private $backup_published = false;
+
+	/**
+	 * 現在の訪問者が管理者でなくても作業ディレクトリを保護する。
+	 */
+	public static function prepare_workspace()
+	{
+		if ( ! is_dir( XSERVER_MIGRATOR_WORKSPACE_DIR ) ) {
+			@mkdir( XSERVER_MIGRATOR_WORKSPACE_DIR );
+		}
+
+		$protected = is_dir( XSERVER_MIGRATOR_WORKSPACE_DIR )
+			&& Xserver_Migrator_File::create_htaccess_file( XSERVER_MIGRATOR_WORKSPACE_DIR );
+		if ( ! $protected ) {
+			if ( ! get_option( 'xserver_migrator_protection_warning' ) ) {
+				update_option( 'xserver_migrator_protection_warning', 1 );
+				error_log( 'Xserver Migrator: workspace direct-access protection could not be updated.' );
+			}
+		} elseif ( get_option( 'xserver_migrator_protection_warning' ) ) {
+			delete_option( 'xserver_migrator_protection_warning' );
+		}
+
+		if ( is_dir( XSERVER_MIGRATOR_WORKSPACE_DIR ) ) {
+			if ( ! file_exists( XSERVER_MIGRATOR_LOG_FILE_PATH ) ) {
+				@touch( XSERVER_MIGRATOR_LOG_FILE_PATH );
+			}
+			if ( ! file_exists( XSERVER_MIGRATOR_WORKSPACE_DIR . 'index.php' ) ) {
+				Xserver_Migrator_File::create_index_file( XSERVER_MIGRATOR_WORKSPACE_DIR );
+			}
+		}
+	}
+
+	public static function protection_notice()
+	{
+		if ( current_user_can( 'activate_plugins' ) && get_option( 'xserver_migrator_protection_warning' ) ) {
+			echo '<div class="notice notice-warning"><p>' . esc_html( 'XServer Migrator: 作業ディレクトリの直接アクセス拒否設定を更新できません。Webサーバーの設定を確認してください。' ) . '</p></div>';
+		}
+	}
+
 	/**
 	 * Xserver_Migrator constructor.
 	 */
@@ -43,30 +86,10 @@ class Xserver_Migrator
 		}
 
 		@set_error_handler( function ( $errno, $errstr, $errfile, $errline ) {
-			if ( false !== strpos( $errfile, '/xserver-migrator/' ) ) {
+			if ( error_reporting() & $errno && false !== strpos( $errfile, '/xserver-migrator/' ) ) { // phpcs:ignore WordPress.PHP.DevelopmentFunctions.prevent_path_disclosure_error_reporting,WordPress.PHP.DiscouragedPHPFunctions.runtime_configuration_error_reporting -- エラー設定を変更せず、現在のマスクを参照する。
 				Xserver_Migrator_Log::error( "$errstr [$errfile:$errline]" );
 			}
 		} );
-
-		@register_shutdown_function( function () {
-			$error = error_get_last();
-
-			if ( ! is_null( $error ) && strpos( $error['file'], XSERVER_MIGRATOR_PLUGIN_NAME ) !== false ) {
-				Xserver_Migrator_File::remove( XSERVER_MIGRATOR_WORKSPACE_DIR );
-				$message = $error['line'] . ': ' . $error['message'];
-				Xserver_Migrator_Response::error( $message, 'general', 500, false );
-			}
-		});
-
-		// .htaccessを生成
-		if ( ! file_exists( XSERVER_MIGRATOR_WORKSPACE_DIR . '.htaccess' ) ) {
-			Xserver_Migrator_File::create_htaccess_file( XSERVER_MIGRATOR_WORKSPACE_DIR );
-		}
-
-		// index.phpを生成
-		if ( ! file_exists( XSERVER_MIGRATOR_WORKSPACE_DIR . 'index.php' ) ) {
-			Xserver_Migrator_File::create_index_file( XSERVER_MIGRATOR_WORKSPACE_DIR );
-		}
 
 		$this->database_dumper = new Xserver_Migrator_Database_Dumper();
 		$this->archiver = new Xserver_Migrator_Archiver();
@@ -157,33 +180,83 @@ class Xserver_Migrator
 
 	/**
 	 * データベースダンプ、wp-contentアーカイブ
+	 *
+	 * @throws Xserver_Migrator_Archive_Exception アーカイブ作成に失敗した場合.
 	 */
 	public function execute()
 	{
-		if ( ! check_ajax_referer( 'xserver_migrator_execute', '_secure', false ) ) {
+		if ( ! current_user_can( 'administrator' ) || ! check_ajax_referer( 'xserver_migrator_execute', '_secure', false ) ) {
 			Xserver_Migrator_Response::error( 'Invalid access', 'archive', 403 );
 		}
 
 		// 検証
 		$this->validate();
 
+		$lock = @fopen( XSERVER_MIGRATOR_WORKSPACE_DIR . 'archive.lock', 'c' );
+		if ( ! $lock ) {
+			Xserver_Migrator_Response::error( 'Cannot lock backup workspace', 'archive' );
+		}
+		if ( ! @flock( $lock, LOCK_EX | LOCK_NB ) ) {
+			fclose( $lock );
+			Xserver_Migrator_Response::error( 'Another backup is being created', 'archive', 409 );
+		}
+		$this->backup_lock = $lock;
+		$this->backup_active = true;
+		register_shutdown_function( array( $this, 'shutdown_backup' ) );
+
 		@ini_set( 'memory_limit', '1024M' );
 		@set_time_limit( 0 );
 
 		Xserver_Migrator_Log::info( $this->get_migration_spec() );
 
-		// dumpはエラーハンドリングが内部で行われているためtryの外におく
+		// ダンプ処理がwp_send_json_errorで終了した場合も、shutdown_backupで後片付けする。
 		$this->database_dumper->dump();
 		try {
 			$archive_file_info = $this->archiver->archive();
-			Xserver_Migrator_File::remove( XSERVER_MIGRATOR_WORKSPACE_DIR . 'dump.sql' );
+			if ( ! Xserver_Migrator_File::remove( XSERVER_MIGRATOR_WORKSPACE_DIR . 'dump.sql' ) ) {
+				throw new Xserver_Migrator_Archive_Exception( 'Could not remove database dump' );
+			}
+			$path = Xserver_Migrator_Download::create_download_path( $archive_file_info['archived_file_name'] );
+			if ( false === $path ) {
+				throw new Xserver_Migrator_Archive_Exception( 'Could not issue archive download URL' );
+			}
+			if ( ! Xserver_Migrator_Download::schedule_cleanup( $archive_file_info['archived_file_name'] ) ) {
+				Xserver_Migrator_Log::warn( 'Archive cleanup scheduling failed; startup cleanup remains available' );
+			}
+			$archive_file_info['archived_file_name'] = $path;
 		} catch ( Xserver_Migrator_Archive_Exception $e ) {
-			$error = $e->getMessage();
-			Xserver_Migrator_File::remove( XSERVER_MIGRATOR_WORKSPACE_DIR . 'dump.sql' );
-			Xserver_Migrator_Response::error( $error, 'archive' );
+			$this->shutdown_backup();
+			Xserver_Migrator_Response::error( 'Archive creation failed', 'archive' );
 		}
 
+		$this->backup_published = true;
+		$this->shutdown_backup();
 		Xserver_Migrator_Response::success( $archive_file_info );
+	}
+
+	/**
+	 * 実行中の処理に属するファイルだけを削除し、ロックファイルと他のアーカイブは残す。
+	 */
+	public function shutdown_backup()
+	{
+		if ( ! $this->backup_active ) {
+			return;
+		}
+
+		if ( file_exists( XSERVER_MIGRATOR_WORKSPACE_DIR . 'dump.sql' ) ) {
+			if ( ! Xserver_Migrator_File::remove( XSERVER_MIGRATOR_WORKSPACE_DIR . 'dump.sql' ) ) {
+				Xserver_Migrator_Log::error( 'Could not remove database dump after backup' );
+			}
+		}
+		if ( ! $this->backup_published ) {
+			$archive = $this->archiver->get_archive_file_path();
+			if ( $archive && file_exists( $archive ) && ! Xserver_Migrator_File::remove( $archive ) ) {
+				Xserver_Migrator_Log::error( 'Could not remove incomplete backup archive' );
+			}
+		}
+		@flock( $this->backup_lock, LOCK_UN );
+		fclose( $this->backup_lock );
+		$this->backup_active = false;
 	}
 
 	/**

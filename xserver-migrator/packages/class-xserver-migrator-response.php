@@ -27,6 +27,7 @@ class Xserver_Migrator_Response
 			Xserver_Migrator_Log::error( $message );
 		}
 
+		status_header( $status_code );
 		wp_send_json_error( array( 'message' => $message, 'operation' => $operation ) , $status_code );
 	}
 }
